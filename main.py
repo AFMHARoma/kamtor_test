@@ -14,15 +14,9 @@ INTERVAL = "1h"
 
 def renew_regr_coef():
     open_btc_data = np.array(
-        pd.read_csv(r"C:\Users\romch\Downloads\Bitstamp_BTCUSDT_1h.csv")[
-            "open"
-        ].tolist()
-    ).reshape(-1, 1)
+        pd.read_csv(r"Bitstamp_BTCUSDT_1h.csv")["open"].tolist()).reshape(-1, 1)
     open_eth_data = np.array(
-        pd.read_csv(r"C:\Users\romch\Downloads\Bitstamp_ETHUSDT_1h.csv")[
-            "open"
-        ].tolist()
-    )
+        pd.read_csv(r"Bitstamp_ETHUSDT_1h.csv")["open"].tolist())
 
     prep_btc_data = (open_btc_data - open_btc_data[0]) / open_btc_data[0]
     prep_eth_data = (open_eth_data - open_eth_data[0]) / open_eth_data[0]
@@ -33,6 +27,8 @@ def renew_regr_coef():
 
 async def get_live_quotes():
 
+    last_update_btc = 0
+    last_update_eth = 0
     prev_noticed_change = 0
     url = "wss://fstream.binance.com/stream?streams={}@kline_{i}/{}@kline_{i}".format(
         *CURRENCIES, i=INTERVAL
@@ -41,23 +37,23 @@ async def get_live_quotes():
     async with websockets.connect(url) as client:
         while True:
 
-            data = json.loads(await client.recv())["data"]["k"]
-            open_, close = map(float, (data["o"], data["c"]))
+            data = json.loads(await client.recv())["data"]
+            timestamp, spec_data = data['E'], data['k']
+            open_, close = map(float, (spec_data["o"], spec_data["c"]))
 
-            if data["s"] == "BTCUSDT":
+            if spec_data["s"] == "BTCUSDT":
                 btc_diff = (close - open_) / open_
-                btc_epoch = data["t"]
-                both_recieved_cond = 1
+                btc_epoch = spec_data["t"]
+                last_update_btc = timestamp
 
-            elif data["s"] == "ETHUSDT":
+            elif spec_data["s"] == "ETHUSDT":
                 eth_diff = (close - open_) / open_
-                eth_epoch = data["t"]
-                both_recieved_cond += 2
+                eth_epoch = spec_data["t"]
+                last_update_eth = timestamp
 
             # print(data)
 
-            if not both_recieved_cond % 3:
-
+            if abs(last_update_btc - last_update_eth) <= 300:
                 abs_own_growth = (
                     eth_diff - btc_diff * REGR_COEF
                 ) * 100 - prev_noticed_change
